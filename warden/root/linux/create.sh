@@ -19,6 +19,8 @@ if [ -d ${target} ]; then
   exit 1
 fi
 
-cp -r skeleton "${target}"
-unshare -m "${target}"/setup.sh
+#将root/linux/skeleton拷贝至对应的instance_id目录下，生成容器骨架
+cp -r skeleton "${target}"   
+#在新的mount namespace中执行setup.sh脚本
+unshare -m "${target}"/setup.sh  
 echo ${target}
