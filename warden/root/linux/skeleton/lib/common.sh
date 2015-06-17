@@ -77,6 +77,7 @@ function should_use_overlayfs() {
 
 function should_use_aufs() {
   # load it so it's in /proc/filesystems
+  #加载aufs
   modprobe -q aufs >/dev/null 2>&1 || true
 
   # don't use aufs for nested warden as neither overlayfs nor aufs can mount
@@ -99,9 +100,11 @@ function should_use_aufs() {
   grep -q aufs /proc/filesystems
 }
 
+#根据文件系统类型，执行对应的挂载命令
 function setup_fs() {
   mkdir -p tmp/rootfs mnt
-
+  #如果是aufs文件系统，将tmp/rootfs以读写的方式 $rootfs_path(/var/vcap/packages/rootfs_lucid64,一个精简的linux文件系统)
+  #以只读的方式挂载到mnt下,ubuntu上搭建的CF平台使用的就是aufs
   if should_use_aufs; then
     mount -n -t aufs -o br:tmp/rootfs=rw:$rootfs_path=ro+wh none mnt
   elif should_use_overlayfs; then
