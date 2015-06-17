@@ -7,6 +7,7 @@ shopt -s nullglob
 
 cd $(dirname $0)
 
+#使common.sh中定义的function在当前shell中生效
 source ./lib/common.sh
 
 # Defaults for debugging the setup script
@@ -21,6 +22,7 @@ rootfs_path=$(readlink -f $rootfs_path)
 allow_nested_warden=${allow_nested_warden:-false}
 
 # Write configuration
+#生成etc/config文件，保存容器ip/port/userid等信息
 cat > etc/config <<-EOS
 id=$id
 network_netmask=$network_netmask
@@ -33,6 +35,7 @@ rootfs_path=$rootfs_path
 allow_nested_warden=$allow_nested_warden
 EOS
 
+#设置文件系统，该函数定义在上面的common.sh脚本中
 setup_fs
 
 # Strip /dev down to the bare minimum
