@@ -20,14 +20,17 @@ nat_instance_chain="${filter_instance_prefix}${id}"
 
 external_ip=$(ip route get 8.8.8.8 | sed 's/.*src\s\(.*\)\s/\1/;tx;d;:x')
 
+#删除forward chain和instance chain
 function teardown_filter() {
   # Prune forward chain
+  #查询instance相关的chain，如果存在，删除之
   iptables -S ${filter_forward_chain} 2> /dev/null |
     grep "\-g ${filter_instance_chain}\b" |
     sed -e "s/-A/-D/" |
     xargs --no-run-if-empty --max-lines=1 iptables
 
   # Flush and delete instance chain
+  #查了下iptables -F -X 都是删除chain的意思，不知道这里为什么写两遍
   iptables -F ${filter_instance_chain} 2> /dev/null || true
   iptables -X ${filter_instance_chain} 2> /dev/null || true
   iptables -F ${filter_instance_log_chain} 2> /dev/null || true
@@ -38,7 +41,9 @@ function setup_filter() {
   teardown_filter
 
   # Create instance chain
+  #新建instance chain
   iptables -N ${filter_instance_chain}
+  #将这条规则加入到instance chain
   iptables -A ${filter_instance_chain} \
     --goto ${filter_default_chain}
 
