@@ -23,14 +23,14 @@ external_ip=$(ip route get 8.8.8.8 | sed 's/.*src\s\(.*\)\s/\1/;tx;d;:x')
 #删除forward chain和instance chain
 function teardown_filter() {
   # Prune forward chain
-  #查询instance相关的chain，如果存在，删除之
+  #查询filter_forward_chain中是否已有该instance对应规则，如果存在，删除之
   iptables -S ${filter_forward_chain} 2> /dev/null |
     grep "\-g ${filter_instance_chain}\b" |
     sed -e "s/-A/-D/" |
     xargs --no-run-if-empty --max-lines=1 iptables
 
   # Flush and delete instance chain
-  #查了下iptables -F -X 都是删除chain的意思，不知道这里为什么写两遍
+  #查了下iptables -F -X 都是删除chain中规则的意思，不知道这里为什么写两遍
   iptables -F ${filter_instance_chain} 2> /dev/null || true
   iptables -X ${filter_instance_chain} 2> /dev/null || true
   iptables -F ${filter_instance_log_chain} 2> /dev/null || true
@@ -43,11 +43,13 @@ function setup_filter() {
   # Create instance chain
   #新建instance chain
   iptables -N ${filter_instance_chain}
-  #将这条规则加入到instance chain
+  #在instance chain中添加跳转至default chain的规则
   iptables -A ${filter_instance_chain} \
     --goto ${filter_default_chain}
 
   # Bind instance chain to forward chain
+  # 在warden forward chain中添加规则，该规则指定从${network_host_iface}网卡(即 w-intanceid-0)
+  # 流入的数据都跳转至${filter_instance_chain}
   iptables -I ${filter_forward_chain} 2 \
     --in-interface ${network_host_iface} \
     --goto ${filter_instance_chain}
