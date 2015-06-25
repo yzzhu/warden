@@ -30,7 +30,7 @@ function teardown_filter() {
     xargs --no-run-if-empty --max-lines=1 iptables
 
   # Flush and delete instance chain
-  #查了下iptables -F -X 都是删除chain中规则的意思，不知道这里为什么写两遍
+  #-F 删除chain中所有规则   -X 删除chain
   iptables -F ${filter_instance_chain} 2> /dev/null || true
   iptables -X ${filter_instance_chain} 2> /dev/null || true
   iptables -F ${filter_instance_log_chain} 2> /dev/null || true
@@ -55,7 +55,11 @@ function setup_filter() {
     --goto ${filter_instance_chain}
 
   # Create instance log chain
+  # 新建filter_instance_log_chain
   iptables -N ${filter_instance_log_chain}
+  # 向filter_instance_log_chain添加规则，该规则开启连接状态跟踪，当满足状态为NEW,UNTRACKED,INVALID时
+  # 使用${filter_instance_chain}为前缀记录日志。
+  # 下面这两条规则配合完成NEW,UNTRACKED,INVALID状态连接的日志记录功能
   iptables -A ${filter_instance_log_chain} \
     -p tcp -m conntrack --ctstate NEW,UNTRACKED,INVALID -j LOG --log-prefix "${filter_instance_chain} "
   iptables -A ${filter_instance_log_chain} \
@@ -64,12 +68,14 @@ function setup_filter() {
 
 function teardown_nat() {
   # Prune prerouting chain
+  # 如果当前nat表中存在nat_instance_chain相关的规则，删除之
   iptables -t nat -S ${nat_prerouting_chain} 2> /dev/null |
     grep "\-j ${nat_instance_chain}\b" |
     sed -e "s/-A/-D/" |
     xargs --no-run-if-empty --max-lines=1 iptables -t nat
 
   # Flush and delete instance chain
+  # 删除nat表中的${nat_instance_chain} ${nat_instance_chain}和${filter_instance_chain}是同一个链
   iptables -t nat -F ${nat_instance_chain} 2> /dev/null || true
   iptables -t nat -X ${nat_instance_chain} 2> /dev/null || true
 }
@@ -78,9 +84,11 @@ function setup_nat() {
   teardown_nat
 
   # Create instance chain
+  # 在nat表中新建${nat_instance_chain}
   iptables -t nat -N ${nat_instance_chain}
 
   # Bind instance chain to prerouting chain
+  # 在${nat_prerouting_chain}中添加规则，所有packets转发至${nat_instance_chain}
   iptables -t nat -A ${nat_prerouting_chain} \
     --jump ${nat_instance_chain}
 }
@@ -91,6 +99,7 @@ exec 3> ../tmp/$(basename $0).lock
 flock -x -w 10 3
 
 case "${1}" in
+#传入参数为setup时，依次调用下两个函数
   "setup")
     setup_filter
     setup_nat
