@@ -10,6 +10,7 @@ cd $(dirname $0)/../
 source ./lib/common.sh
 
 # Add new group for every subsystem
+# tmp/warden/cgroup/目录下有cpu、cpuacct、devices、memory四个子系统，根据下面的判断，这里只对device做了额外操作
 for system_path in /tmp/warden/cgroup/*
 do
   instance_path=$system_path/instance-$id
@@ -55,10 +56,13 @@ done
 
 echo $PID > ./run/wshd.pid
 
+# 建立一对veth host端名字为$network_host_iface， container端名字为$network_container_iface
 ip link add name $network_host_iface type veth peer name $network_container_iface
+# 将$network_host_iface加入netns1
 ip link set $network_host_iface netns 1
+# 将$network_container_iface加入netns $PID， 这样在宿主机上就看不到$network_container_iface了
 ip link set $network_container_iface netns $PID
-
+# 给$network_host_iface这块(虚拟)网卡设置ip、netmask、mtu
 ifconfig $network_host_iface $network_host_ip netmask $network_netmask mtu $container_iface_mtu
 
 exit 0
