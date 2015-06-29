@@ -777,7 +777,7 @@ pid_t child_start(wshd_t *w) {
   flags |= CLONE_NEWNS;
   flags |= CLONE_NEWPID;
   flags |= CLONE_NEWUTS;
-
+  /*在新的命名空间中执行child_run*/
   pid = clone(child_run, stack, flags, w);
   if (pid == -1) {
     perror("clone");
@@ -804,13 +804,14 @@ int parent_run(wshd_t *w) {
   pid_t pid;
 
   memset(path, 0, sizeof(path));
-
+  /*拼接wshd.sock地址*/
   strcpy(path + strlen(path), w->run_path);
   strcpy(path + strlen(path), "/");
   strcpy(path + strlen(path), "wshd.sock");
-
+  /*un_listen在un.c中实现，采用domain socket的方式进行寻址和访问*/
   w->fd = un_listen(path);
 
+  /*barrier_open在barrier.c中实现，通过管道分别为w->barrier_parent和w->barrier_child建立读通道和写通道*/
   rv = barrier_open(&w->barrier_parent);
   assert(rv == 0);
 
@@ -819,17 +820,19 @@ int parent_run(wshd_t *w) {
 
   /* Unshare mount namespace, so the before clone hook is free to mount
    * whatever it needs without polluting the global mount namespace. */
+   /*这个英文注释的已经很清楚了*/
   rv = unshare(CLONE_NEWNS);
   assert(rv == 0);
-
+   /*run在util.c中实现，fork一个进程，在子进程中执行hook-parent-before-clone.sh
+   该脚本主要用于设置文件系统格式*/
   rv = run(w->lib_path, "hook-parent-before-clone.sh");
   assert(rv == 0);
-
+  /*clone子进程，切换至新的命名空间*/
   pid = child_start(w);
   assert(pid > 0);
-
+  /*设置$PID为子进程的pid*/
   parent_setenv_pid(w, pid);
-
+  /*在子进程中执行hook-parent-after-clone.sh，该脚本设置容器内进程对设备的访问权限*/
   rv = run(w->lib_path, "hook-parent-after-clone.sh");
   assert(rv == 0);
 
@@ -860,11 +863,12 @@ int main(int argc, char **argv) {
   w = calloc(1, sizeof(*w));
   assert(w != NULL);
 
+  /*根据传入的参数初始化wshd_t结构体*/
   rv = wshd__getopt(w, argc, argv);
   if (rv == -1) {
     exit(1);
   }
-
+  /*以下三个if判断如果没有传入对应的参数，采用默认值*/
   if (strlen(w->run_path) == 0) {
     strcpy(w->run_path, "run");
   }
