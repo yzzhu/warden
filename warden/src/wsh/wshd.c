@@ -683,29 +683,31 @@ int child_run(void *data) {
   size_t pivoted_lib_path_len;
 
   /* Wait for parent */
+  /*目前已经在子进程中，读取父进程发来的消息*/
   rv = barrier_wait(&w->barrier_parent);
   assert(rv == 0);
-
+  /*执行hook-child-before-pivot.sh脚本*/
   rv = run(w->lib_path, "hook-child-before-pivot.sh");
   assert(rv == 0);
 
   /* Prepare lib path for pivot */
   strcpy(pivoted_lib_path, "/mnt");
   pivoted_lib_path_len = strlen(pivoted_lib_path);
+  /* *pivoted_lib_path = /mnt/lib */
   realpath(w->lib_path, pivoted_lib_path + pivoted_lib_path_len);
-
+  /*切换至目录 ./mnt */
   rv = chdir(w->root_path);
   if (rv == -1) {
     perror("chdir");
     abort();
   }
-
+  /* 在 mnt/ 下新建mnt目录？？？ */
   rv = mkdir("mnt", 0700);
   if (rv == -1 && errno != EEXIST) {
     perror("mkdir");
     abort();
   }
-
+  /*将当前进程的根文件系统移入mnt，使当前目录(.)作为新的根文件系统  */
   rv = pivot_root(".", "mnt");
   if (rv == -1) {
     perror("pivot_root");
@@ -717,12 +719,14 @@ int child_run(void *data) {
     perror("chdir");
     abort();
   }
-
+  /*执行hook-child-after-pivot.sh  */
   rv = run(pivoted_lib_path, "hook-child-after-pivot.sh");
   assert(rv == 0);
 
+  /* 将w存入共享内存*/
   child_save_to_shm(w);
 
+  /*执行child_continue*/
   execl("/sbin/wshd", "/sbin/wshd", "--continue", NULL);
   perror("exec");
   abort();
@@ -732,29 +736,34 @@ int child_continue(int argc, char **argv) {
   wshd_t *w;
   int rv;
 
+  /*从共享内存中load父进的wshd_t结构体*/
   w = child_load_from_shm();
 
   /* Process MUST not leak file descriptors to children */
+  /*确保子进程相关的文件描述符被关闭*/
   barrier_mix_cloexec(&w->barrier_child);
   fcntl_mix_cloexec(w->fd);
 
+  /*设置进程名*/
   if (strlen(w->title) > 0) {
     setproctitle(argv, w->title);
   }
-
+  /*umount根文件系统 */
   rv = mount_umount_pivoted_root("/mnt");
   if (rv == -1) {
     exit(1);
   }
 
   /* Detach this process from its original group */
+  /*和原来的进程分离，父进程的退出不再影响子进程*/
   rv = setsid();
   assert(rv > 0 && rv == getpid());
 
   /* Signal parent */
+  /*写子进程管道*/
   rv = barrier_signal(&w->barrier_child);
   assert(rv == 0);
-
+  /*进入child_loop,接收wsh发来的请求*/
   return child_loop(w);
 }
 
@@ -777,7 +786,7 @@ pid_t child_start(wshd_t *w) {
   flags |= CLONE_NEWNS;
   flags |= CLONE_NEWPID;
   flags |= CLONE_NEWUTS;
-  /*在新的命名空间中执行child_run*/
+  /*创建子进程，在新的命名空间中执行child_run*/
   pid = clone(child_run, stack, flags, w);
   if (pid == -1) {
     perror("clone");
